@@ -15,7 +15,7 @@ Cloudflare Worker that proxies requests to `https://api.qonversion.io` as transp
 Wrangler variables in `wrangler.jsonc`:
 
 - `UPSTREAM_ORIGIN`: upstream Qonversion endpoint. Defaults to `https://api.qonversion.io`.
-- `ALLOWED_ORIGINS`: comma-separated browser origin allowlist for CORS responses.
+- `ALLOWED_ORIGINS`: comma-separated browser origin allowlist for CORS responses. Set to `*` to allow any origin. The Worker never sends `Access-Control-Allow-Credentials` because this proxy is intended for bearer-token clients, not cookie-based auth.
 - `BLOCK_UNAUTHENTICATED_REQUESTS`: when `true`, reject non-`OPTIONS` requests that do not include `Authorization`.
 
 ## Logging

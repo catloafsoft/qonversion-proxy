@@ -116,12 +116,22 @@ export function buildCorsHeaders(
     .map((value) => value.trim())
     .filter(Boolean);
 
+  if (normalizedAllowedOrigins.includes("*")) {
+    return {
+      "Access-Control-Allow-Headers":
+        requestedHeaders ?? "authorization, content-type",
+      "Access-Control-Allow-Methods": ALLOWED_METHODS,
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Max-Age": "86400",
+      Vary: "Access-Control-Request-Method, Access-Control-Request-Headers",
+    };
+  }
+
   if (!normalizedAllowedOrigins.includes(origin)) {
     return null;
   }
 
   return {
-    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers":
       requestedHeaders ?? "authorization, content-type",
     "Access-Control-Allow-Methods": ALLOWED_METHODS,

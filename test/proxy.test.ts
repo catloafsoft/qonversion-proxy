@@ -117,7 +117,6 @@ describe("buildCorsHeaders", () => {
     );
 
     expect(headers).toEqual({
-      "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Headers": "content-type, authorization",
       "Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Origin": "https://app.example.com",
@@ -135,6 +134,22 @@ describe("buildCorsHeaders", () => {
         null,
       ),
     ).toBeNull();
+  });
+
+  it("supports wildcard origins without credentials for bearer-token clients", () => {
+    const headers = buildCorsHeaders(
+      "http://localhost:4000",
+      "*",
+      "content-type, authorization",
+    );
+
+    expect(headers).toEqual({
+      "Access-Control-Allow-Headers": "content-type, authorization",
+      "Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Max-Age": "86400",
+      Vary: "Access-Control-Request-Method, Access-Control-Request-Headers",
+    });
   });
 });
 
@@ -345,6 +360,61 @@ describe("worker.fetch", () => {
       "https://app.example.com",
     );
     expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("returns wildcard cors headers without credentials when configured", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response("ok"));
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/status", {
+        headers: {
+          authorization: "Bearer token",
+          origin: "http://localhost:4000",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "*",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
+    expect(response.headers.get("Vary")).toBe(
+      "Access-Control-Request-Method, Access-Control-Request-Headers",
+    );
+  });
+
+  it("does not emit allow-credentials for explicitly allowlisted origins", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response("ok"));
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/status", {
+        headers: {
+          authorization: "Bearer token",
+          origin: "https://app.example.com",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example.com",
+    );
+    expect(response.headers.has("Access-Control-Allow-Credentials")).toBe(
+      false,
+    );
   });
 
   it("does not add CORS headers when the request has no origin header", async () => {
