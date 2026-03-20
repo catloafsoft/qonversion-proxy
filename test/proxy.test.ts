@@ -67,6 +67,22 @@ describe("createProxyRequest", () => {
     expect(upstream.headers.get("accept-encoding")).toBe("identity");
   });
 
+  it("propagates the inbound abort signal to the upstream request", () => {
+    const controller = new AbortController();
+    const request = new Request("https://proxy.example.com/v3/test", {
+      signal: controller.signal,
+    });
+
+    const upstream = createProxyRequest(request, {
+      UPSTREAM_ORIGIN: "https://api.qonversion.io",
+      ALLOWED_ORIGINS: "",
+    });
+
+    controller.abort();
+
+    expect(upstream.signal.aborted).toBe(true);
+  });
+
   it("strips spoofable proxy headers and cookies before forwarding upstream", () => {
     const request = new Request("https://proxy.example.com/v3/test", {
       headers: {
@@ -145,6 +161,23 @@ describe("buildProxyResponseInit", () => {
       "https://app.example.com",
     );
     expect(init.encodeBody).toBe("manual");
+  });
+
+  it("does not duplicate vary headers when casing differs", () => {
+    const init = buildProxyResponseInit(
+      new Response("{}", {
+        status: 200,
+        headers: {
+          vary: "origin",
+        },
+      }),
+      {
+        Vary: "Origin",
+      },
+    );
+    const headers = new Headers(init.headers);
+
+    expect(headers.get("vary")).toBe("origin");
   });
 });
 
@@ -321,21 +354,20 @@ describe("worker.fetch", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(noop);
     globalThis.fetch = fetchSpy;
 
-    await expect(
-      handleProxyRequest(
-        new Request("https://proxy.example.com/v1/status", {
-          headers: {
-            "cf-ray": "edge-ray-id",
-          },
-        }),
-        {
-          UPSTREAM_ORIGIN: "https://api.qonversion.io",
-          ALLOWED_ORIGINS: "",
-          BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/status", {
+        headers: {
+          "cf-ray": "edge-ray-id",
         },
-      ),
-    ).rejects.toThrow("network broke");
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
 
+    expect(response.status).toBe(502);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith(
       "proxy_request_error",
@@ -344,6 +376,7 @@ describe("worker.fetch", () => {
         path: "/v1/status",
         hasQuery: false,
         rayId: "edge-ray-id",
+        status: 502,
         error: "network broke",
       }),
     );
@@ -364,5 +397,72 @@ describe("worker.fetch", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(response.status).toBe(401);
+  });
+
+  it("treats blank authorization as unauthenticated when the guard is enabled", async () => {
+    const fetchSpy = vi.fn<typeof fetch>();
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/test", {
+        headers: {
+          authorization: "   ",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "true",
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(401);
+  });
+
+  it("preserves cors headers on local unauthorized responses for allowed origins", async () => {
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/test", {
+        headers: {
+          origin: "https://app.example.com",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "true",
+      },
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example.com",
+    );
+  });
+
+  it("preserves cors headers on local bad gateway responses for allowed origins", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () => {
+      throw new Error("network broke");
+    });
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/status", {
+        headers: {
+          authorization: "Bearer token",
+          origin: "https://app.example.com",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example.com",
+    );
   });
 });

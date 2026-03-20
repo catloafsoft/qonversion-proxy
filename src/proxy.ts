@@ -68,6 +68,7 @@ export function createProxyRequest(request: Request, env: WorkerEnv): Request {
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
+    signal: request.signal,
   };
 
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -95,10 +96,9 @@ function shouldBlockUnauthenticatedRequest(
   request: Request,
   env: WorkerEnv,
 ): boolean {
-  return (
-    env.BLOCK_UNAUTHENTICATED_REQUESTS === "true" &&
-    !request.headers.has("Authorization")
-  );
+  const authorizationHeader = request.headers.get("Authorization")?.trim();
+
+  return env.BLOCK_UNAUTHENTICATED_REQUESTS === "true" && !authorizationHeader;
 }
 
 export function buildCorsHeaders(
@@ -139,8 +139,9 @@ function appendVary(existingValue: string | null, nextValue: string): string {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  const normalizedValues = new Set(values.map((value) => value.toLowerCase()));
 
-  if (!values.includes(nextValue)) {
+  if (!normalizedValues.has(nextValue.toLowerCase())) {
     values.push(nextValue);
   }
 
@@ -208,7 +209,10 @@ export async function handleProxyRequest(
   }
 
   if (shouldBlockUnauthenticatedRequest(request, env)) {
-    const response = new Response("Unauthorized", { status: 401 });
+    const response = applyCorsHeaders(
+      new Response("Unauthorized", { status: 401 }),
+      corsHeaders,
+    );
     console.warn("proxy_request_blocked", {
       ...logContext,
       status: response.status,
@@ -232,11 +236,18 @@ export async function handleProxyRequest(
 
     return response;
   } catch (error) {
+    const response = applyCorsHeaders(
+      new Response("Bad Gateway", { status: 502 }),
+      corsHeaders,
+    );
+
     console.error("proxy_request_error", {
       ...logContext,
       durationMs: Date.now() - startedAt,
+      status: response.status,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw error;
+
+    return response;
   }
 }
