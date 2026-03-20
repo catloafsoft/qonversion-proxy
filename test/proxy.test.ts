@@ -4,8 +4,10 @@ import {
   buildCorsHeaders,
   buildProxyResponseInit,
   createProxyRequest,
+  getAllowedMethods,
   handleProxyRequest,
   isAllowedPath,
+  isAllowedMethod,
   isAllowedOrigin,
 } from "../src/proxy";
 
@@ -115,12 +117,13 @@ describe("buildCorsHeaders", () => {
     const headers = buildCorsHeaders(
       "https://app.example.com",
       "https://app.example.com, https://admin.example.com",
+      undefined,
       "content-type, authorization",
     );
 
     expect(headers).toEqual({
       "Access-Control-Allow-Headers": "content-type, authorization",
-      "Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Origin": "https://app.example.com",
       "Access-Control-Max-Age": "86400",
       Vary: "Origin",
@@ -128,11 +131,14 @@ describe("buildCorsHeaders", () => {
   });
 
   it("returns null when the origin is missing or not allowed", () => {
-    expect(buildCorsHeaders(null, "https://app.example.com", null)).toBeNull();
+    expect(
+      buildCorsHeaders(null, "https://app.example.com", undefined, null),
+    ).toBeNull();
     expect(
       buildCorsHeaders(
         "https://blocked.example.com",
         "https://app.example.com",
+        undefined,
         null,
       ),
     ).toBeNull();
@@ -142,16 +148,47 @@ describe("buildCorsHeaders", () => {
     const headers = buildCorsHeaders(
       "http://localhost:4000",
       "*",
+      undefined,
       "content-type, authorization",
     );
 
     expect(headers).toEqual({
       "Access-Control-Allow-Headers": "content-type, authorization",
-      "Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Max-Age": "86400",
       Vary: "Access-Control-Request-Method, Access-Control-Request-Headers",
     });
+  });
+
+  it("uses configured methods instead of the default allowlist", () => {
+    const headers = buildCorsHeaders(
+      "https://app.example.com",
+      "https://app.example.com",
+      "GET,POST,PATCH,OPTIONS",
+      "content-type, authorization",
+    );
+
+    expect(headers?.["Access-Control-Allow-Methods"]).toBe(
+      "GET,POST,PATCH,OPTIONS",
+    );
+  });
+});
+
+describe("allowed methods helpers", () => {
+  it("defaults to GET, POST, OPTIONS", () => {
+    expect(getAllowedMethods(undefined)).toEqual(["GET", "POST", "OPTIONS"]);
+  });
+
+  it("normalizes configured methods and enforces them case-insensitively", () => {
+    expect(getAllowedMethods("get, post, patch , options")).toEqual([
+      "GET",
+      "POST",
+      "PATCH",
+      "OPTIONS",
+    ]);
+    expect(isAllowedMethod("patch", "GET,POST,PATCH,OPTIONS")).toBe(true);
+    expect(isAllowedMethod("DELETE", "GET,POST,PATCH,OPTIONS")).toBe(false);
   });
 });
 
@@ -427,6 +464,68 @@ describe("worker.fetch", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(response.status).toBe(405);
+  });
+
+  it("rejects non-preflight requests for methods outside the allowlist", async () => {
+    const fetchSpy = vi.fn<typeof fetch>();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(noop);
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/identities/123", {
+        method: "PATCH",
+        headers: {
+          authorization: "Bearer token",
+          origin: "http://localhost:4000",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "*",
+        ALLOWED_PATH_PATTERNS: "/v3/*",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "proxy_request_blocked",
+      expect.objectContaining({
+        path: "/v3/identities/123",
+        reason: "method_not_allowed",
+        status: 405,
+      }),
+    );
+  });
+
+  it("allows configured non-default methods when explicitly enabled", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response("ok"));
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/identities/123", {
+        method: "PATCH",
+        headers: {
+          authorization: "Bearer token",
+          origin: "http://localhost:4000",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "*",
+        ALLOWED_PATH_PATTERNS: "/v3/*",
+        ALLOWED_METHODS: "GET,POST,PATCH,OPTIONS",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+      "GET,POST,PATCH,OPTIONS",
+    );
   });
 
   it("forwards non-preflight options requests upstream transparently", async () => {

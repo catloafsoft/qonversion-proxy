@@ -17,6 +17,7 @@ Wrangler variables in `wrangler.jsonc`:
 - `UPSTREAM_ORIGIN`: upstream Qonversion endpoint. Defaults to `https://api.qonversion.io`.
 - `ALLOWED_ORIGINS`: comma-separated browser origin allowlist for CORS responses. Set to `*` to allow any origin. The Worker never sends `Access-Control-Allow-Credentials` because this proxy is intended for bearer-token clients, not cookie-based auth.
 - `ALLOWED_PATH_PATTERNS`: optional comma-separated path allowlist for requests the proxy is allowed to forward. Defaults to `/v3/*`. Supports exact paths like `/v3/health`, prefix patterns ending in `*` like `/v3/*`, and a literal `*` to allow any path.
+- `ALLOWED_METHODS`: comma-separated request method allowlist. Defaults to `GET,POST,OPTIONS`. Requests using methods outside this allowlist are rejected locally with `405`. Include `OPTIONS` if browser preflight support is needed.
 - `BLOCK_UNAUTHENTICATED_REQUESTS`: when `true`, reject non-`OPTIONS` requests that do not include `Authorization`.
 
 `ALLOWED_ORIGINS` format details:
@@ -64,6 +65,23 @@ Default:
 
 ```txt
 ALLOWED_PATH_PATTERNS=/v3/*
+```
+
+`ALLOWED_METHODS` format details:
+
+- Use a comma-separated list of HTTP methods.
+- Values are normalized case-insensitively.
+- The default is `GET,POST,OPTIONS`.
+- Include `OPTIONS` to support browser preflight requests.
+
+Examples:
+
+```txt
+ALLOWED_METHODS=GET,POST,OPTIONS
+```
+
+```txt
+ALLOWED_METHODS=GET,POST,PATCH,OPTIONS
 ```
 
 ## Logging

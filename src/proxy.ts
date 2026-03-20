@@ -7,6 +7,7 @@ type EnvKeys = Pick<
   | "UPSTREAM_ORIGIN"
   | "ALLOWED_ORIGINS"
   | "ALLOWED_PATH_PATTERNS"
+  | "ALLOWED_METHODS"
   | "BLOCK_UNAUTHENTICATED_REQUESTS"
 >;
 
@@ -48,8 +49,27 @@ const SENSITIVE_FORWARD_HEADERS = new Set([
   "x-forwarded-proto",
   "x-real-ip",
 ]);
-const ALLOWED_METHODS = "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS";
-const ALLOWED_METHOD_SET = new Set(ALLOWED_METHODS.split(","));
+const DEFAULT_ALLOWED_METHODS = "GET,POST,OPTIONS";
+
+export function getAllowedMethods(
+  allowedMethods: string | undefined,
+): string[] {
+  const normalizedAllowedMethods = (allowedMethods ?? DEFAULT_ALLOWED_METHODS)
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
+  return normalizedAllowedMethods.length > 0
+    ? normalizedAllowedMethods
+    : DEFAULT_ALLOWED_METHODS.split(",");
+}
+
+export function isAllowedMethod(
+  method: string,
+  allowedMethods: string | undefined,
+): boolean {
+  return new Set(getAllowedMethods(allowedMethods)).has(method.toUpperCase());
+}
 
 function normalizePathPatterns(pathPatterns: string | undefined): string[] {
   return (pathPatterns ?? "")
@@ -137,6 +157,7 @@ function shouldBlockUnauthenticatedRequest(
 export function buildCorsHeaders(
   origin: string | null,
   allowedOrigins: string | undefined,
+  allowedMethods: string | undefined,
   requestedHeaders: string | null,
 ): Record<string, string> | null {
   if (!origin) {
@@ -152,7 +173,8 @@ export function buildCorsHeaders(
     return {
       "Access-Control-Allow-Headers":
         requestedHeaders ?? "authorization, content-type",
-      "Access-Control-Allow-Methods": ALLOWED_METHODS,
+      "Access-Control-Allow-Methods":
+        getAllowedMethods(allowedMethods).join(","),
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Max-Age": "86400",
       Vary: "Access-Control-Request-Method, Access-Control-Request-Headers",
@@ -166,7 +188,7 @@ export function buildCorsHeaders(
   return {
     "Access-Control-Allow-Headers":
       requestedHeaders ?? "authorization, content-type",
-    "Access-Control-Allow-Methods": ALLOWED_METHODS,
+    "Access-Control-Allow-Methods": getAllowedMethods(allowedMethods).join(","),
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -203,6 +225,7 @@ function isPreflightRequest(request: Request): boolean {
 
 function buildPreflightResponse(
   request: Request,
+  env: WorkerEnv,
   corsHeaders: Record<string, string> | null,
 ): Response {
   if (!corsHeaders) {
@@ -214,7 +237,10 @@ function buildPreflightResponse(
     ?.trim()
     .toUpperCase();
 
-  if (!requestedMethod || !ALLOWED_METHOD_SET.has(requestedMethod)) {
+  if (
+    !requestedMethod ||
+    !isAllowedMethod(requestedMethod, env.ALLOWED_METHODS)
+  ) {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
@@ -298,8 +324,22 @@ export async function handleProxyRequest(
   const corsHeaders = buildCorsHeaders(
     origin,
     env.ALLOWED_ORIGINS,
+    env.ALLOWED_METHODS,
     request.headers.get("Access-Control-Request-Headers"),
   );
+
+  if (!isAllowedMethod(request.method, env.ALLOWED_METHODS)) {
+    const response = applyCorsHeaders(
+      new Response("Method Not Allowed", { status: 405 }),
+      corsHeaders,
+    );
+    console.warn("proxy_request_blocked", {
+      ...logContext,
+      status: response.status,
+      reason: "method_not_allowed",
+    });
+    return response;
+  }
 
   if (!isAllowedOrigin(origin, env.ALLOWED_ORIGINS)) {
     const response = new Response("Forbidden", { status: 403 });
@@ -325,7 +365,7 @@ export async function handleProxyRequest(
   }
 
   if (isPreflightRequest(request)) {
-    return buildPreflightResponse(request, corsHeaders);
+    return buildPreflightResponse(request, env, corsHeaders);
   }
 
   if (shouldBlockUnauthenticatedRequest(request, env)) {

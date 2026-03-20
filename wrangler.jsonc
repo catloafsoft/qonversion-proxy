@@ -10,6 +10,7 @@
     "UPSTREAM_ORIGIN": "https://api.qonversion.io",
     "ALLOWED_ORIGINS": "*", // Allow from anywhere by default
     "ALLOWED_PATH_PATTERNS": "/v3/*",
+    "ALLOWED_METHODS": "GET,POST,OPTIONS",
     "BLOCK_UNAUTHENTICATED_REQUESTS": "true",
   },
   "routes": [
