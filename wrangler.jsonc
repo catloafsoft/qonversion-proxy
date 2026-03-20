@@ -9,6 +9,7 @@
   "vars": {
     "UPSTREAM_ORIGIN": "https://api.qonversion.io",
     "ALLOWED_ORIGINS": "*", // Allow from anywhere by default
+    "ALLOWED_PATH_PATTERNS": "/v3/*",
     "BLOCK_UNAUTHENTICATED_REQUESTS": "false",
   },
   "routes": [

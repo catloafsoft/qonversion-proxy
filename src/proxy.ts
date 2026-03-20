@@ -4,7 +4,10 @@ export interface WorkerResponseInit extends ResponseInit {
 
 type EnvKeys = Pick<
   Env,
-  "UPSTREAM_ORIGIN" | "ALLOWED_ORIGINS" | "BLOCK_UNAUTHENTICATED_REQUESTS"
+  | "UPSTREAM_ORIGIN"
+  | "ALLOWED_ORIGINS"
+  | "ALLOWED_PATH_PATTERNS"
+  | "BLOCK_UNAUTHENTICATED_REQUESTS"
 >;
 
 export interface WorkerEnv extends Partial<Record<keyof EnvKeys, string>> {
@@ -47,6 +50,35 @@ const SENSITIVE_FORWARD_HEADERS = new Set([
 ]);
 const ALLOWED_METHODS = "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS";
 const ALLOWED_METHOD_SET = new Set(ALLOWED_METHODS.split(","));
+
+function normalizePathPatterns(pathPatterns: string | undefined): string[] {
+  return (pathPatterns ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function isAllowedPath(
+  pathname: string,
+  pathPatterns: string | undefined,
+): boolean {
+  const normalizedPathPatterns = normalizePathPatterns(pathPatterns);
+
+  if (
+    normalizedPathPatterns.length === 0 ||
+    normalizedPathPatterns.includes("*")
+  ) {
+    return true;
+  }
+
+  return normalizedPathPatterns.some((pattern) => {
+    if (pattern.endsWith("*")) {
+      return pathname.startsWith(pattern.slice(0, -1));
+    }
+
+    return pathname === pattern;
+  });
+}
 
 export function createProxyRequest(request: Request, env: WorkerEnv): Request {
   const incomingUrl = new URL(request.url);
@@ -240,6 +272,7 @@ export async function handleProxyRequest(
   request: Request,
   env: WorkerEnv,
 ): Promise<Response> {
+  const requestUrl = new URL(request.url);
   const origin = request.headers.get("Origin");
   const logContext = buildLogContext(request, env);
   const corsHeaders = buildCorsHeaders(
@@ -247,6 +280,19 @@ export async function handleProxyRequest(
     env.ALLOWED_ORIGINS,
     request.headers.get("Access-Control-Request-Headers"),
   );
+
+  if (!isAllowedPath(requestUrl.pathname, env.ALLOWED_PATH_PATTERNS)) {
+    const response = applyCorsHeaders(
+      new Response("Not Found", { status: 404 }),
+      corsHeaders,
+    );
+    console.warn("proxy_request_blocked", {
+      ...logContext,
+      status: response.status,
+      reason: "path_not_allowed",
+    });
+    return response;
+  }
 
   if (isPreflightRequest(request)) {
     return buildPreflightResponse(request, corsHeaders);

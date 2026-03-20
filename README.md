@@ -16,6 +16,7 @@ Wrangler variables in `wrangler.jsonc`:
 
 - `UPSTREAM_ORIGIN`: upstream Qonversion endpoint. Defaults to `https://api.qonversion.io`.
 - `ALLOWED_ORIGINS`: comma-separated browser origin allowlist for CORS responses. Set to `*` to allow any origin. The Worker never sends `Access-Control-Allow-Credentials` because this proxy is intended for bearer-token clients, not cookie-based auth.
+- `ALLOWED_PATH_PATTERNS`: optional comma-separated path allowlist for requests the proxy is allowed to forward. Defaults to `/v3/*`. Supports exact paths like `/v3/health`, prefix patterns ending in `*` like `/v3/*`, and a literal `*` to allow any path.
 - `BLOCK_UNAUTHENTICATED_REQUESTS`: when `true`, reject non-`OPTIONS` requests that do not include `Authorization`.
 
 `ALLOWED_ORIGINS` format details:
@@ -36,6 +37,31 @@ ALLOWED_ORIGINS=https://app.example.com,http://localhost:4000
 
 ```txt
 ALLOWED_ORIGINS=*
+```
+
+`ALLOWED_PATH_PATTERNS` format details:
+
+- Use request paths only, not full URLs.
+- Exact paths are supported, for example `/v3/health`.
+- Prefix patterns are supported when they end in `*`, for example `/api/*`.
+- A literal `*` allows any path.
+- Mid-pattern wildcards such as `/v*/users` are not supported.
+- Separate multiple patterns with commas.
+
+Examples:
+
+```txt
+ALLOWED_PATH_PATTERNS=/api/*
+```
+
+```txt
+ALLOWED_PATH_PATTERNS=/v3/health,/v3/identities/*
+```
+
+Default:
+
+```txt
+ALLOWED_PATH_PATTERNS=/v3/*
 ```
 
 ## Logging
@@ -82,13 +108,13 @@ pnpm run deploy
 Normal proxy request:
 
 ```bash
-curl -i "https://your-alias.example.com/v1/products"
+curl -i "https://your-alias.example.com/v3/products"
 ```
 
 Preflight request:
 
 ```bash
-curl -i -X OPTIONS "https://your-alias.example.com/v1/products" \
+curl -i -X OPTIONS "https://your-alias.example.com/v3/products" \
   -H "Origin: https://app.example.com" \
   -H "Access-Control-Request-Method: GET" \
   -H "Access-Control-Request-Headers: content-type, authorization"
