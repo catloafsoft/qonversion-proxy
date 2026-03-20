@@ -191,6 +191,7 @@ describe("worker.fetch", () => {
         method: "OPTIONS",
         headers: {
           origin: "https://app.example.com",
+          "access-control-request-method": "GET",
           "access-control-request-headers": "content-type, authorization",
         },
       }),
@@ -209,6 +210,9 @@ describe("worker.fetch", () => {
     expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
       "content-type, authorization",
     );
+    expect(response.headers.get("Vary")).toBe(
+      "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+    );
   });
 
   it("rejects preflight requests from disallowed origins", async () => {
@@ -220,6 +224,7 @@ describe("worker.fetch", () => {
         method: "OPTIONS",
         headers: {
           origin: "https://blocked.example.com",
+          "access-control-request-method": "GET",
         },
       }),
       {
@@ -231,6 +236,64 @@ describe("worker.fetch", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
+  });
+
+  it("rejects preflight requests for methods outside the allowlist", async () => {
+    const fetchSpy = vi.fn<typeof fetch>();
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/check", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://app.example.com",
+          "access-control-request-method": "TRACE",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(405);
+  });
+
+  it("forwards non-preflight options requests upstream transparently", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(
+      async (request: Request | URL | string) => {
+        const actualRequest =
+          request instanceof Request ? request : new Request(request);
+
+        expect(actualRequest.method).toBe("OPTIONS");
+        expect(actualRequest.url).toBe("https://api.qonversion.io/v1/check");
+
+        return new Response(null, {
+          status: 200,
+          headers: {
+            allow: "GET, POST, OPTIONS",
+          },
+        });
+      },
+    );
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v1/check", {
+        method: "OPTIONS",
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("allow")).toBe("GET, POST, OPTIONS");
   });
 
   it("passes upstream status, headers, body, and CORS headers through for allowed origins", async () => {

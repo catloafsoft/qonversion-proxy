@@ -70,6 +70,7 @@ Preflight request:
 ```bash
 curl -i -X OPTIONS "https://your-alias.example.com/v1/products" \
   -H "Origin: https://app.example.com" \
+  -H "Access-Control-Request-Method: GET" \
   -H "Access-Control-Request-Headers: content-type, authorization"
 ```
 

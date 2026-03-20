@@ -46,6 +46,7 @@ const SENSITIVE_FORWARD_HEADERS = new Set([
   "x-real-ip",
 ]);
 const ALLOWED_METHODS = "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS";
+const ALLOWED_METHOD_SET = new Set(ALLOWED_METHODS.split(","));
 
 export function createProxyRequest(request: Request, env: WorkerEnv): Request {
   const incomingUrl = new URL(request.url);
@@ -130,6 +131,46 @@ export function buildCorsHeaders(
   };
 }
 
+function isPreflightRequest(request: Request): boolean {
+  return (
+    request.method === "OPTIONS" &&
+    request.headers.has("Origin") &&
+    request.headers.has("Access-Control-Request-Method")
+  );
+}
+
+function buildPreflightResponse(
+  request: Request,
+  corsHeaders: Record<string, string> | null,
+): Response {
+  if (!corsHeaders) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  const requestedMethod = request.headers
+    .get("Access-Control-Request-Method")
+    ?.trim()
+    .toUpperCase();
+
+  if (!requestedMethod || !ALLOWED_METHOD_SET.has(requestedMethod)) {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const headers = new Headers(corsHeaders);
+  headers.set(
+    "Vary",
+    appendVary(
+      appendVary(headers.get("Vary"), "Access-Control-Request-Method"),
+      "Access-Control-Request-Headers",
+    ),
+  );
+
+  return new Response(null, {
+    status: 204,
+    headers,
+  });
+}
+
 function appendVary(existingValue: string | null, nextValue: string): string {
   if (!existingValue) {
     return nextValue;
@@ -197,15 +238,8 @@ export async function handleProxyRequest(
     request.headers.get("Access-Control-Request-Headers"),
   );
 
-  if (request.method === "OPTIONS") {
-    if (!corsHeaders) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+  if (isPreflightRequest(request)) {
+    return buildPreflightResponse(request, corsHeaders);
   }
 
   if (shouldBlockUnauthenticatedRequest(request, env)) {
