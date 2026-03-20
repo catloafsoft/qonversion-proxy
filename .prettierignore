@@ -1,0 +1,7 @@
+node_modules
+.wrangler
+.pnpm-store
+coverage
+dist
+pnpm-lock.yaml
+worker-configuration.d.ts

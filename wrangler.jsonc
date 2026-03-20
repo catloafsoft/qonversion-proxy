@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qonversion-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-20",
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "UPSTREAM_ORIGIN": "https://api.qonversion.io",
+    "ALLOWED_ORIGINS": "",
+    "BLOCK_UNAUTHENTICATED_REQUESTS": "false",
+  },
+  "routes": [
+    // Add one entry per alias hostname you control.
+    // Example:
+    // { "pattern": "qonversion-proxy.example.com", "custom_domain": true }
+  ],
+}
