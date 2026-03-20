@@ -18,6 +18,26 @@ Wrangler variables in `wrangler.jsonc`:
 - `ALLOWED_ORIGINS`: comma-separated browser origin allowlist for CORS responses. Set to `*` to allow any origin. The Worker never sends `Access-Control-Allow-Credentials` because this proxy is intended for bearer-token clients, not cookie-based auth.
 - `BLOCK_UNAUTHENTICATED_REQUESTS`: when `true`, reject non-`OPTIONS` requests that do not include `Authorization`.
 
+`ALLOWED_ORIGINS` format details:
+
+- Use exact origins, not URLs with paths.
+- Include the protocol, for example `https://app.example.com`.
+- Include the port when needed, for example `http://localhost:4000`.
+- Do not include a trailing slash.
+- Separate multiple origins with commas.
+- `*` is supported to allow any origin.
+- Pattern wildcards such as `*.example.com` or `https://*.example.com` are not supported.
+
+Examples:
+
+```txt
+ALLOWED_ORIGINS=https://app.example.com,http://localhost:4000
+```
+
+```txt
+ALLOWED_ORIGINS=*
+```
+
 ## Logging
 
 The Worker emits structured logs for:
