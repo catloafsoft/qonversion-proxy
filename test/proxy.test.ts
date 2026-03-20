@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import worker, {
+import {
   buildCorsHeaders,
   buildProxyResponseInit,
   createProxyRequest,
-} from "../src/index";
+  handleProxyRequest,
+} from "../src/proxy";
 
 const originalFetch = globalThis.fetch;
 const noop = () => undefined;
@@ -152,7 +153,7 @@ describe("worker.fetch", () => {
     const fetchSpy = vi.fn<typeof fetch>();
     globalThis.fetch = fetchSpy;
 
-    const response = await worker.fetch(
+    const response = await handleProxyRequest(
       new Request("https://proxy.example.com/v1/check", {
         method: "OPTIONS",
         headers: {
@@ -165,7 +166,6 @@ describe("worker.fetch", () => {
         ALLOWED_ORIGINS: "https://app.example.com",
         BLOCK_UNAUTHENTICATED_REQUESTS: "false",
       },
-      {},
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe("worker.fetch", () => {
     const fetchSpy = vi.fn<typeof fetch>();
     globalThis.fetch = fetchSpy;
 
-    const response = await worker.fetch(
+    const response = await handleProxyRequest(
       new Request("https://proxy.example.com/v1/check", {
         method: "OPTIONS",
         headers: {
@@ -194,7 +194,6 @@ describe("worker.fetch", () => {
         ALLOWED_ORIGINS: "https://app.example.com",
         BLOCK_UNAUTHENTICATED_REQUESTS: "false",
       },
-      {},
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -225,7 +224,7 @@ describe("worker.fetch", () => {
     );
     globalThis.fetch = fetchSpy;
 
-    const response = await worker.fetch(
+    const response = await handleProxyRequest(
       new Request("https://proxy.example.com/v1/products?platform=ios", {
         method: "GET",
         headers: {
@@ -239,7 +238,6 @@ describe("worker.fetch", () => {
         ALLOWED_ORIGINS: "https://app.example.com",
         BLOCK_UNAUTHENTICATED_REQUESTS: "false",
       },
-      {},
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -257,14 +255,13 @@ describe("worker.fetch", () => {
     const fetchSpy = vi.fn<typeof fetch>(async () => new Response("ok"));
     globalThis.fetch = fetchSpy;
 
-    const response = await worker.fetch(
+    const response = await handleProxyRequest(
       new Request("https://proxy.example.com/v1/status"),
       {
         UPSTREAM_ORIGIN: "https://api.qonversion.io",
         ALLOWED_ORIGINS: "https://app.example.com",
         BLOCK_UNAUTHENTICATED_REQUESTS: "false",
       },
-      {},
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -285,7 +282,7 @@ describe("worker.fetch", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(noop);
     globalThis.fetch = fetchSpy;
 
-    await worker.fetch(
+    await handleProxyRequest(
       new Request("https://proxy.example.com/v1/status?platform=ios", {
         method: "POST",
         headers: {
@@ -300,7 +297,6 @@ describe("worker.fetch", () => {
         ALLOWED_ORIGINS: "https://app.example.com",
         BLOCK_UNAUTHENTICATED_REQUESTS: "false",
       },
-      {},
     );
 
     expect(logSpy).toHaveBeenCalledTimes(1);
@@ -326,7 +322,7 @@ describe("worker.fetch", () => {
     globalThis.fetch = fetchSpy;
 
     await expect(
-      worker.fetch(
+      handleProxyRequest(
         new Request("https://proxy.example.com/v1/status", {
           headers: {
             "cf-ray": "edge-ray-id",
@@ -337,7 +333,6 @@ describe("worker.fetch", () => {
           ALLOWED_ORIGINS: "",
           BLOCK_UNAUTHENTICATED_REQUESTS: "false",
         },
-        {},
       ),
     ).rejects.toThrow("network broke");
 
@@ -358,14 +353,13 @@ describe("worker.fetch", () => {
     const fetchSpy = vi.fn<typeof fetch>();
     globalThis.fetch = fetchSpy;
 
-    const response = await worker.fetch(
+    const response = await handleProxyRequest(
       new Request("https://proxy.example.com/v3/test"),
       {
         UPSTREAM_ORIGIN: "https://api.qonversion.io",
         ALLOWED_ORIGINS: "",
         BLOCK_UNAUTHENTICATED_REQUESTS: "true",
       },
-      {},
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();

@@ -4,3 +4,4 @@ node_modules
 coverage
 dist
 pnpm-lock.yaml
+worker-configuration.d.ts
