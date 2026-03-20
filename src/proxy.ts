@@ -173,6 +173,26 @@ export function buildCorsHeaders(
   };
 }
 
+export function isAllowedOrigin(
+  origin: string | null,
+  allowedOrigins: string | undefined,
+): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  const normalizedAllowedOrigins = (allowedOrigins ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (normalizedAllowedOrigins.includes("*")) {
+    return true;
+  }
+
+  return normalizedAllowedOrigins.includes(origin);
+}
+
 function isPreflightRequest(request: Request): boolean {
   return (
     request.method === "OPTIONS" &&
@@ -280,6 +300,16 @@ export async function handleProxyRequest(
     env.ALLOWED_ORIGINS,
     request.headers.get("Access-Control-Request-Headers"),
   );
+
+  if (!isAllowedOrigin(origin, env.ALLOWED_ORIGINS)) {
+    const response = new Response("Forbidden", { status: 403 });
+    console.warn("proxy_request_blocked", {
+      ...logContext,
+      status: response.status,
+      reason: "origin_not_allowed",
+    });
+    return response;
+  }
 
   if (!isAllowedPath(requestUrl.pathname, env.ALLOWED_PATH_PATTERNS)) {
     const response = applyCorsHeaders(

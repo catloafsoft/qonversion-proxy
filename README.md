@@ -28,6 +28,8 @@ Wrangler variables in `wrangler.jsonc`:
 - Separate multiple origins with commas.
 - `*` is supported to allow any origin.
 - Pattern wildcards such as `*.example.com` or `https://*.example.com` are not supported.
+- Requests with no `Origin` header are still allowed, so non-browser clients are not blocked.
+- Requests with an `Origin` header that is not allowed are rejected with `403`, including non-preflight requests.
 
 Examples:
 

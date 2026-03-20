@@ -6,6 +6,7 @@ import {
   createProxyRequest,
   handleProxyRequest,
   isAllowedPath,
+  isAllowedOrigin,
 } from "../src/proxy";
 
 const originalFetch = globalThis.fetch;
@@ -171,6 +172,28 @@ describe("isAllowedPath", () => {
   });
 });
 
+describe("isAllowedOrigin", () => {
+  it("allows requests with no origin header", () => {
+    expect(isAllowedOrigin(null, "https://app.example.com")).toBe(true);
+  });
+
+  it("supports explicit origin allowlists and wildcard mode", () => {
+    expect(
+      isAllowedOrigin(
+        "https://app.example.com",
+        "https://app.example.com,https://admin.example.com",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedOrigin(
+        "https://blocked.example.com",
+        "https://app.example.com,https://admin.example.com",
+      ),
+    ).toBe(false);
+    expect(isAllowedOrigin("https://blocked.example.com", "*")).toBe(true);
+  });
+});
+
 describe("buildProxyResponseInit", () => {
   it("uses manual body encoding when rewrapping an upstream response", () => {
     const init = buildProxyResponseInit(
@@ -269,6 +292,60 @@ describe("worker.fetch", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
+  });
+
+  it("rejects non-preflight requests from disallowed origins", async () => {
+    const fetchSpy = vi.fn<typeof fetch>();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(noop);
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/identities/123", {
+        headers: {
+          authorization: "Bearer token",
+          origin: "https://blocked.example.com",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        ALLOWED_PATH_PATTERNS: "/v3/*",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "proxy_request_blocked",
+      expect.objectContaining({
+        path: "/v3/identities/123",
+        reason: "origin_not_allowed",
+        status: 403,
+      }),
+    );
+  });
+
+  it("still allows non-browser requests with no origin header", async () => {
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response("ok"));
+    globalThis.fetch = fetchSpy;
+
+    const response = await handleProxyRequest(
+      new Request("https://proxy.example.com/v3/identities/123", {
+        headers: {
+          authorization: "Bearer token",
+        },
+      }),
+      {
+        UPSTREAM_ORIGIN: "https://api.qonversion.io",
+        ALLOWED_ORIGINS: "https://app.example.com",
+        ALLOWED_PATH_PATTERNS: "/v3/*",
+        BLOCK_UNAUTHENTICATED_REQUESTS: "false",
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
   });
 
   it("rejects requests whose path does not match the configured allowlist", async () => {
