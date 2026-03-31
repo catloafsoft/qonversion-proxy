@@ -202,6 +202,8 @@ describe("isAllowedPath", () => {
     expect(isAllowedPath("/api/users", "/api/users,/v3/*")).toBe(true);
     expect(isAllowedPath("/v3/identities/123", "/api/users,/v3/*")).toBe(true);
     expect(isAllowedPath("/v2/identities/123", "/api/users,/v3/*")).toBe(false);
+    expect(isAllowedPath("/v1/events", "/v3/*,/v1/*")).toBe(true);
+    expect(isAllowedPath("/v2/events", "/v3/*,/v1/*")).toBe(false);
   });
 
   it("supports wildcard passthrough with a literal star", () => {
