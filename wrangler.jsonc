@@ -7,10 +7,10 @@
     "enabled": true,
   },
   "vars": {
-    "UPSTREAM_ORIGIN": "https://api.qonversion.io",
+    "UPSTREAM_ORIGIN": "https://api2.qonversion.io", // This new API endpoint supports the latest features but is undocumented!
     "ALLOWED_ORIGINS": "*", // Allow from anywhere by default
     "ALLOWED_PATH_PATTERNS": "/v3/*,/v1/*",
-    "ALLOWED_METHODS": "GET,POST,OPTIONS",
+    "ALLOWED_METHODS": "GET,POST,OPTIONS,DELETE",
     "BLOCK_UNAUTHENTICATED_REQUESTS": "true",
   },
   "routes": [
