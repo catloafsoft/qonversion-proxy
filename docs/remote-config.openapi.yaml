@@ -1,0 +1,346 @@
+openapi: 3.1.0
+info:
+  title: Qonversion Remote Config API
+  version: 1.0.0
+  description: |
+    OpenAPI contract for the remote config endpoints used by the Qonversion iOS and Android SDKs.
+
+    This spec is intentionally scoped to the remote-config surface only:
+    - fetch one remote config
+    - fetch a list of remote configs
+    - attach/detach a user to a remote configuration
+
+servers:
+  - url: https://api2.qonversion.io
+    description: Qonversion production API
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Remote Config
+    description: Remote configuration and experiment-assignment endpoints
+
+paths:
+  /v3/remote-config:
+    get:
+      tags: [Remote Config]
+      operationId: getRemoteConfig
+      summary: Fetch a single remote config
+      description: |
+        Returns the remote config assigned to the user for an optional context key.
+        Native SDKs call this endpoint with the user id and, when provided, a context key.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/ContextKey'
+      responses:
+        '200':
+          description: Remote config assigned to the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoteConfig'
+              examples:
+                paywall:
+                  value:
+                    payload:
+                      CTA: Start Trial
+                      CTA_color: '#307BF6'
+                      main_image: https://cdn.example.com/images/paywall.png
+                      product_id: prod_7d_trial_5_99
+                      show_close_button: true
+                    experiment:
+                      uid: exp_123
+                      name: Paywall test
+                      group:
+                        uid: grp_abc
+                        name: Variant A
+                        type: treatment
+                    source:
+                      uid: rc_123
+                      name: Default paywall
+                      type: remote_configuration
+                      assignment_type: auto
+                      context_key: main_paywall
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v3/remote-configs:
+    get:
+      tags: [Remote Config]
+      operationId: listRemoteConfigs
+      summary: Fetch remote configs in bulk
+      description: |
+        Returns remote configs for all context keys, or for a selected set of context keys.
+        The SDK has two request modes:
+        - `all_context_keys=true`
+        - `context_key=foo&context_key=bar&with_empty_context_key=true|false`
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: all_context_keys
+          in: query
+          required: false
+          description: When true, returns all context keys.
+          schema:
+            type: boolean
+            default: true
+        - name: context_key
+          in: query
+          required: false
+          description: Repeated query parameter. Provide one or more context keys to filter the result.
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: with_empty_context_key
+          in: query
+          required: false
+          description: Include the config with an empty context key in the filtered result.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of remote configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RemoteConfig'
+              examples:
+                list:
+                  value:
+                    - payload:
+                        CTA: Start Trial
+                        CTA_color: '#307BF6'
+                        main_image: https://cdn.example.com/images/paywall.png
+                        product_id: prod_7d_trial_5_99
+                        show_close_button: true
+                      experiment: null
+                      source:
+                        uid: rc_123
+                        name: Default paywall
+                        type: remote_configuration
+                        assignment_type: auto
+                        context_key: main_paywall
+                    - payload:
+                        bool: true
+                        json:
+                          key: value
+                      experiment: null
+                      source:
+                        uid: rc_456
+                        name: Swift
+                        type: remote_configuration
+                        assignment_type: auto
+                        context_key: swift_key
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v3/remote-configurations/{id}/users/{user_id}:
+    post:
+      tags: [Remote Config]
+      operationId: attachUserToRemoteConfiguration
+      summary: Attach a user to a remote configuration
+      description: |
+        Test-only operation used by the native SDKs to force a user onto a specific remote configuration.
+      parameters:
+        - $ref: '#/components/parameters/RemoteConfigurationId'
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: User attached successfully
+        '204':
+          description: User attached successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [Remote Config]
+      operationId: detachUserFromRemoteConfiguration
+      summary: Detach a user from a remote configuration
+      description: |
+        Test-only operation used by the native SDKs to remove a forced remote configuration assignment.
+      parameters:
+        - $ref: '#/components/parameters/RemoteConfigurationId'
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: User detached successfully
+        '204':
+          description: User detached successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Qonversion project key
+
+  parameters:
+    UserId:
+      name: user_id
+      in: query
+      required: true
+      description: The current Qonversion user id.
+      schema:
+        type: string
+    UserIdPath:
+      name: user_id
+      in: path
+      required: true
+      description: The current Qonversion user id.
+      schema:
+        type: string
+    RemoteConfigurationId:
+      name: id
+      in: path
+      required: true
+      description: Remote configuration identifier.
+      schema:
+        type: string
+    ContextKey:
+      name: context_key
+      in: query
+      required: false
+      description: Optional context key used to select a specific remote config.
+      schema:
+        type: string
+        nullable: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authorization
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Remote config not found for the given user/context key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RemoteConfig:
+      type: object
+      required: [payload, source]
+      additionalProperties: false
+      properties:
+        payload:
+          type: object
+          description: Arbitrary JSON payload configured in Qonversion.
+          additionalProperties: true
+        experiment:
+          anyOf:
+            - $ref: '#/components/schemas/Experiment'
+            - type: 'null'
+          description: Present when the config comes from an experiment assignment.
+        source:
+          $ref: '#/components/schemas/RemoteConfigSource'
+
+    RemoteConfigSource:
+      type: object
+      required: [uid, name, type, assignment_type]
+      additionalProperties: false
+      properties:
+        uid:
+          type: string
+          description: Remote configuration identifier.
+        name:
+          type: string
+          description: Human-readable remote configuration name.
+        type:
+          $ref: '#/components/schemas/RemoteConfigSourceType'
+        assignment_type:
+          $ref: '#/components/schemas/RemoteConfigAssignmentType'
+        context_key:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Context key used to fetch the config. Empty or null means the default config.
+
+    RemoteConfigSourceType:
+      type: string
+      enum:
+        - experiment_control_group
+        - experiment_treatment_group
+        - remote_configuration
+        - unknown
+
+    RemoteConfigAssignmentType:
+      type: string
+      enum:
+        - auto
+        - manual
+        - unknown
+
+    Experiment:
+      type: object
+      required: [uid, name, group]
+      additionalProperties: false
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        group:
+          $ref: '#/components/schemas/ExperimentGroup'
+
+    ExperimentGroup:
+      type: object
+      required: [uid, name, type]
+      additionalProperties: false
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/ExperimentGroupType'
+
+    ExperimentGroupType:
+      type: string
+      enum:
+        - control
+        - treatment
+        - unknown
+
+    ErrorResponse:
+      type: object
+      description: Generic error payload returned by the backend.
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+            - type: string
+            - type: 'null'
