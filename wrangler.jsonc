@@ -13,6 +13,9 @@
     "ALLOWED_METHODS": "GET,POST,OPTIONS,DELETE",
     "BLOCK_UNAUTHENTICATED_REQUESTS": "true",
   },
+  "placement": {
+    "hostname": "api2.qonversion.io" // Optimize worker placement for this hostname
+  },
   "routes": [
     // Add one entry per alias hostname you control.
     // Example:
