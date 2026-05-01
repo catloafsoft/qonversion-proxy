@@ -5,6 +5,15 @@
   "compatibility_date": "2026-03-20",
   "observability": {
     "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      // 0–1: fraction of requests traced (e.g. 0.05 ≈ 5%). Omit or use 1 for 100%.
+      "head_sampling_rate": 0.1,
+    },
   },
   "vars": {
     "UPSTREAM_ORIGIN": "https://api2.qonversion.io", // This new API endpoint supports the latest features but is undocumented!
